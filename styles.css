@@ -1,0 +1,21 @@
+.chart {
+    width: 100%;
+    min-height: 400px;
+    border: 2px solid black;
+    border-radius: 5%;
+    background-color: white !important;
+    overflow: hidden;
+}
+
+.jumbotron{
+    background-color: #BFD7B5;
+    border: 2px solid black;
+}
+
+body {
+  background-color: #F5F5DC;
+}
+
+.oculto {
+    display: none;
+}
