@@ -1,3 +1,17 @@
+@font-face {
+  font-family: 'Libre Franklin';
+  src: url('./fonts/Libre_Franklin/static/LibreFranklin-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Libre Franklin';
+  src: url('./fonts/Libre_Franklin//static/LibreFranklin-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+}
+
 .chart {
     width: 100%;
     min-height: 400px;
@@ -14,6 +28,7 @@
 
 body {
   background-color: #F5F5DC;
+  font-family: 'Libre Franklin';
 }
 
 .oculto {
