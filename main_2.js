@@ -11,7 +11,6 @@ const obtenerTotalesKidsBool = (dataSet) => {
     const conteo = { "Con Niños": 0, "Sin Niños": 0 };
     
     Object.values(dataSet.kids_bool || {}).forEach(val => {
-        // Asumiendo que 1 es 'Con Niños' y 0 es 'Sin Niños'
         if (val === 1) conteo["Con Niños"]++;
         else conteo["Sin Niños"]++;
     });
@@ -25,34 +24,61 @@ const obtenerTotalesKidsBool = (dataSet) => {
 
 
 const prepararDatosJitter = (dataSet) => {
-    // Definimos las categorías del eje X
     const categoriasX = ['0 Niños', '1 Niño', '2 Niños', '3 Niños'];
     const dataScatter = [];
 
-    Object.keys(dataSet.kids || {}).forEach(idx => {
+    // Validamos que existan los datos antes de iterar
+    if (!dataSet.kids || !dataSet.totalDays) return { dataScatter: [], categoriasX };
+
+    Object.keys(dataSet.kids).forEach(idx => {
         const k = dataSet.kids[idx];
         const d = dataSet.totalDays[idx];
+        const canceled = dataSet.is_canceled ? dataSet.is_canceled[idx] : 0;
         
-        // Solo procesamos si el valor de kids está en nuestro rango de categorías (0-3)
-        if (k >= 0 && k <= 3) {
-            // El formato para este gráfico es: [índice_categoría, valor_Y]
-            // ECharts se encarga del jittering automáticamente
-            dataScatter.push([k, d]); 
+        // Filtramos para evitar valores nulos o fuera de rango
+        if (k !== undefined && d !== undefined && k >= 0 && k <= 3) {
+            dataScatter.push({
+                // El valor DEBE ser un array [x, y]
+                value: [k, d], 
+                is_canceled: canceled
+            }); 
         }
     });
 
     return { dataScatter, categoriasX };
 };
 
+let myChart; 
+let infoGlobal;
+let mostrandoCancelados = false;
+// Esta es la función para resaltar los cancelados
+const resaltarCancelados = () => {
+    mostrandoCancelados = !mostrandoCancelados;
+
+    myChart.setOption({
+        series: [{
+            data: infoGlobal.dataScatter.map(item => ({
+                ...item,
+                itemStyle: {
+                    color: (mostrandoCancelados && item.is_canceled === 1) ? '#FF4D4F' : '#5470c6',
+                    opacity: (mostrandoCancelados && item.is_canceled === 1) ? 0.8 : 0.4
+                }
+            }))
+        }]
+    });
+};
+
+
+
 const getOptionJitter = (info, chartWidth) => {
     const { dataScatter, categoriasX } = info;
     
-    // Calculamos el ancho del jitter basado en el espacio disponible por categoría
-    const jitterWidth = (chartWidth / categoriasX.length) * 0.8;
+    const jitterWidth = (chartWidth / categoriasX.length) * 0.9;
 
     return {
         title: {
-            text: 'Estancia por cantidad de Niños (con Jittering)',
+            animation: false,
+            text: 'Estancia por cantidad de Niños',
             left: 'center'
         },
         tooltip: {
@@ -62,7 +88,6 @@ const getOptionJitter = (info, chartWidth) => {
             formatter: (params) => {
                 const id = `mini-chart-${params.dataIndex}`;
                 
-                // Renderizamos el mini-gráfico después de que aparezca el tooltip
                 setTimeout(() => {
                     renderizarMiniBarra(id, info.totalesKids);
                 }, 0);
@@ -73,6 +98,14 @@ const getOptionJitter = (info, chartWidth) => {
                 `;
             }
         },
+        dataZoom: [
+            {
+                id: 'dataZoomY',
+                type: 'slider',
+                yAxisIndex: [0],
+                filterMode: 'empty'
+            }
+        ],
         grid: {
             left: 80,
             right: 50,
@@ -81,7 +114,6 @@ const getOptionJitter = (info, chartWidth) => {
         xAxis: {
             type: 'category',
             data: categoriasX,
-            // Aquí activamos la magia del jittering automático de ECharts
             jitter: jitterWidth,
             boundaryGap: true,
             axisTick: { alignWithLabel: true }
@@ -98,6 +130,7 @@ const getOptionJitter = (info, chartWidth) => {
                 type: 'scatter',
                 data: dataScatter,
                 symbolSize: 6,
+                animation: false,
                 itemStyle: {
                     opacity: 0.4,
                     color: '#5470c6'
@@ -119,7 +152,9 @@ function renderizarMiniBarra(containerId, datosTotales) {
             data: datosTotales.map(d => d.name),
             axisLabel: { fontSize: 10 }
         },
-        yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+        yAxis: {
+            show: false
+        },
         series: [{
             type: 'bar',
             data: datosTotales.map(d => d.value),
@@ -133,13 +168,17 @@ const initCharts = async () => {
     const dataSet = await leerDatos();
     if (!dataSet) return;
 
-    // Calculamos los totales una sola vez
     const totalesKids = obtenerTotalesKidsBool(dataSet);
-    const info = prepararDatosJitter(dataSet);
-    info.totalesKids = totalesKids; // Los guardamos para el tooltip
+    infoGlobal = prepararDatosJitter(dataSet);
+    infoGlobal.totalesKids = totalesKids;  
 
-    const chart = echarts.init(document.getElementById("chart1"));
-    chart.setOption(getOptionJitter(info, chart.getWidth()));
+    myChart = echarts.init(document.getElementById("chart1"));
+    myChart.setOption(getOptionJitter(infoGlobal, myChart.getWidth()));
+    const btn = document.getElementById('btnCancelados');
+    if (btn) {
+        btn.addEventListener('click', resaltarCancelados);
+    }
+
 };
 
 window.addEventListener('load', initCharts);
