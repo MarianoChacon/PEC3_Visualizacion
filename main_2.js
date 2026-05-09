@@ -5,7 +5,7 @@ const anotacionesCancelados = {
     "3": "27.03% Canc."
 };
 let mostrandoResaltado = false;
-let myChart; 
+let myChart;
 let infoGlobal;
 let mostrandoCancelados = false;
 let modoActual = 'estancia';
