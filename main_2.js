@@ -1,3 +1,94 @@
+const anotacionesCancelados = {
+    "0": "37.31% Canc.",
+    "1": "30.86% Canc.",
+    "2": "41.15% Canc.",
+    "3": "27.03% Canc."
+};
+let mostrandoResaltado = false;
+let myChart; 
+let infoGlobal;
+let mostrandoCancelados = false;
+let modoActual = 'estancia';
+let paisSeleccionado = 'todos';
+
+const actualizarGrafico = () => {
+    // 1. Aplicamos el filtro de país sobre el total de datos
+    const datosFiltrados = paisSeleccionado === 'todos' 
+        ? infoGlobal.dataScatter 
+        : infoGlobal.dataScatter.filter(item => item.country_filter === paisSeleccionado);
+
+    // 2. Si quieres que los botones de "Solo no canceladas" afecten también:
+    // Aquí podrías añadir más lógica de filtrado si fuera necesario
+
+    // 3. Generamos los elementos visuales (textos)
+    const elementosGraficos = mostrandoResaltado ? [0, 1, 2, 3].map(cat => ({
+        type: 'text',
+        left: `${18 + (cat * 21)}%`,
+        top: '25%',
+        style: { text: anotacionesCancelados[cat], font: 'bold 12px sans-serif', fill: '#FF4D4F' },
+        silent: true
+    })) : [];
+
+    // 4. Pintamos el gráfico con la métrica y colores actuales
+    myChart.setOption({
+        yAxis: {
+            name: modoActual === 'estancia' ? 'Días de estancia' : 'Precio Medio (ADR)',
+            scale: true
+        },
+        series: [{
+            id: 'serie-principal',
+            data: datosFiltrados.map(item => ({
+                value: modoActual === 'estancia' ? item.estancia : item.precio,
+                itemStyle: {
+                    color: !mostrandoResaltado ? '#5470c6' : (item.is_canceled === 1 ? '#FF4D4F' : '#088216'),
+                    opacity: mostrandoResaltado ? 0.6 : 0.4
+                }
+            }))
+        }],
+        graphic: elementosGraficos
+    }, { replaceMerge: ['graphic'] });
+};
+
+const filtrarPorPais = (evento) => {
+    paisSeleccionado = evento.target.value; // Actualiza el país global
+    actualizarGrafico();
+};
+
+const switchResaltado = () => {
+    mostrandoResaltado = !mostrandoResaltado; // Cambia el estado de color
+    actualizarGrafico();
+};
+
+const cambiarMetrica = () => {
+    modoActual = (modoActual === 'estancia') ? 'precio' : 'estancia';
+    const btn = document.getElementById('btnCambiarMetrica');
+    if (btn) btn.innerText = modoActual === 'estancia' ? 'Ver ADR' : 'Ver Estancia';
+    actualizarGrafico();
+};
+
+// --- El botón de "Solo no canceladas" es un filtro extra ---
+const filtrarNoCanceladas = () => {
+    mostrandoResaltado = false; 
+    // Aplicamos el filtro de país + el filtro de no canceladas
+    const filtrados = infoGlobal.dataScatter.filter(item => {
+        const cumplePais = paisSeleccionado === 'todos' || item.country_filter === paisSeleccionado;
+        return cumplePais && item.is_canceled === 0;
+    });
+
+    myChart.setOption({
+        series: [{
+            id: 'serie-principal',
+            data: filtrados.map(item => ({
+                value: modoActual === 'estancia' ? item.estancia : item.precio,
+                itemStyle: { color: '#088216', opacity: 0.5 }
+            }))
+        }],
+        graphic: [] 
+    }, { replaceMerge: ['graphic'] });
+};
+
+
+
 async function leerDatos() {
     try {
         const respuesta = await fetch('hotel_bookings_clean.json');
@@ -26,46 +117,29 @@ const obtenerTotalesKidsBool = (dataSet) => {
 const prepararDatosJitter = (dataSet) => {
     const categoriasX = ['0 Niños', '1 Niño', '2 Niños', '3 Niños'];
     const dataScatter = [];
-
-    // Validamos que existan los datos antes de iterar
+    
     if (!dataSet.kids || !dataSet.totalDays) return { dataScatter: [], categoriasX };
-
+    const paisesUnicos = [...new Set(Object.values(dataSet.country_filter || {}))].sort();
     Object.keys(dataSet.kids).forEach(idx => {
         const k = dataSet.kids[idx];
         const d = dataSet.totalDays[idx];
+        const adr = dataSet.adr[idx];
+        const country = dataSet.country_filter[idx];
         const canceled = dataSet.is_canceled ? dataSet.is_canceled[idx] : 0;
         
         // Filtramos para evitar valores nulos o fuera de rango
         if (k !== undefined && d !== undefined && k >= 0 && k <= 3) {
             dataScatter.push({
                 // El valor DEBE ser un array [x, y]
-                value: [k, d], 
+                estancia: [k, d],
+                precio:[k,adr],
+                country_filter: country,
                 is_canceled: canceled
             }); 
         }
     });
 
-    return { dataScatter, categoriasX };
-};
-
-let myChart; 
-let infoGlobal;
-let mostrandoCancelados = false;
-// Esta es la función para resaltar los cancelados
-const resaltarCancelados = () => {
-    mostrandoCancelados = !mostrandoCancelados;
-
-    myChart.setOption({
-        series: [{
-            data: infoGlobal.dataScatter.map(item => ({
-                ...item,
-                itemStyle: {
-                    color: (mostrandoCancelados && item.is_canceled === 1) ? '#FF4D4F' : '#5470c6',
-                    opacity: (mostrandoCancelados && item.is_canceled === 1) ? 0.8 : 0.4
-                }
-            }))
-        }]
-    });
+    return { dataScatter, categoriasX, paisesUnicos };
 };
 
 
@@ -126,11 +200,16 @@ const getOptionJitter = (info, chartWidth) => {
         },
         series: [
             {
+                id: 'serie-principal',
                 name: 'Reservas',
                 type: 'scatter',
-                data: dataScatter,
+                data: dataScatter.map(item => ({
+                        value: item.estancia, 
+                        is_canceled: item.is_canceled
+                })),
                 symbolSize: 6,
-                animation: false,
+                universalTransition: { enabled: true },
+                animationDuration: 1000, // Duración de la transició
                 itemStyle: {
                     opacity: 0.4,
                     color: '#5470c6'
@@ -164,21 +243,41 @@ function renderizarMiniBarra(containerId, datosTotales) {
     });
 }
 
+// Inicializar todos los graficos
 const initCharts = async () => {
     const dataSet = await leerDatos();
     if (!dataSet) return;
 
+    // 1. Procesar datos
     const totalesKids = obtenerTotalesKidsBool(dataSet);
     infoGlobal = prepararDatosJitter(dataSet);
-    infoGlobal.totalesKids = totalesKids;  
+    infoGlobal.totalesKids = totalesKids;
 
-    myChart = echarts.init(document.getElementById("chart1"));
-    myChart.setOption(getOptionJitter(infoGlobal, myChart.getWidth()));
-    const btn = document.getElementById('btnCancelados');
-    if (btn) {
-        btn.addEventListener('click', resaltarCancelados);
+    // 2. Llenar el select de países
+    const select = document.getElementById('filtroPais');
+    if (select) {
+        infoGlobal.paisesUnicos.forEach(pais => {
+            const opcion = document.createElement('option');
+            opcion.value = pais;
+            opcion.text = pais;
+            select.appendChild(opcion);
+        });
+        select.addEventListener('change', filtrarPorPais);
     }
 
+    // 3. Iniciar el gráfico
+    myChart = echarts.init(document.getElementById("chart1"));
+    myChart.setOption(getOptionJitter(infoGlobal, myChart.getWidth()));
+
+    // 4. Listeners de botones con validación (para evitar errores si no están en el HTML)
+    const btnCancelados = document.getElementById('btnCancelados');
+    if (btnCancelados) btnCancelados.addEventListener('click', switchResaltado);
+
+    const btnSoloNoCanceladas = document.getElementById('btnSoloNoCanceladas');
+    if (btnSoloNoCanceladas) btnSoloNoCanceladas.addEventListener('click', filtrarNoCanceladas);
+
+    const btnCambiarMetrica = document.getElementById('btnCambiarMetrica');
+    if (btnCambiarMetrica) btnCambiarMetrica.addEventListener('click', cambiarMetrica);
 };
 
 window.addEventListener('load', initCharts);
